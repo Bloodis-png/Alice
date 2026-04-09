@@ -1,10 +1,37 @@
-// ====== FASE 3A: INTEGRACIÓN WEBSPEECH API ======
+// ====== FASE 3A & MODO VIVO: INTEGRACIÓN CON WEBSPEECH API ======
 const botonMicrofono = document.getElementById('boton-microfono');
 const inputComando = document.getElementById('input-comando');
 const historialChat = document.getElementById('historial-chat');
 const spriteAlice = document.getElementById('sprite-alice');
+const modoVivoProgress = document.getElementById('modo-vivo-progress');
+const progressBarFill = modoVivoProgress ? modoVivoProgress.querySelector('.progress-bar-fill') : null;
 
-// Configuramos la API de reconocimiento de voz
+// Audio context para notificaciones
+function playSystemBeep() {
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const oscillator = audioCtx.createOscillator();
+    const gainNode = audioCtx.createGain();
+
+    oscillator.type = 'sine';
+    oscillator.frequency.setValueAtTime(880, audioCtx.currentTime); // Tono agradable (A5)
+    oscillator.frequency.exponentialRampToValueAtTime(1760, audioCtx.currentTime + 0.1); 
+    
+    gainNode.gain.setValueAtTime(0, audioCtx.currentTime);
+    gainNode.gain.linearRampToValueAtTime(0.05, audioCtx.currentTime + 0.05); // Volumen muy bajo y elegante
+    gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.3);
+
+    oscillator.connect(gainNode);
+    gainNode.connect(audioCtx.destination);
+
+    oscillator.start(audioCtx.currentTime);
+    oscillator.stop(audioCtx.currentTime + 0.3);
+}
+
+// Variables Globales
+let progressInterval = null;
+let secondsModoVivo = 0;
+
+// API de voz
 const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
 let recognition = null;
 let isRecording = false;
@@ -15,18 +42,30 @@ if (SpeechRecognition) {
     recognition.continuous = false;
     recognition.interimResults = false;
 
-    // Feedback Visual: Haz que el botón del micrófono cambie de color o brille mientras Alice esté 'escuchando'
     recognition.onstart = () => {
         isRecording = true;
-        botonMicrofono.style.backgroundColor = '#e11d48'; // Rojo carmesí
+        botonMicrofono.style.backgroundColor = '#e11d48'; 
         botonMicrofono.style.boxShadow = '0 0 15px #e11d48';
         inputComando.placeholder = "Escuchando voz...";
     };
 
     recognition.onresult = (event) => {
-        const transcript = event.results[0][0].transcript;
-        inputComando.value = transcript;
-        enviarMensajeAlServidor(transcript);
+        const transcriptRaw = event.results[0][0].transcript;
+        const transcriptStr = transcriptRaw.trim().toLowerCase();
+        
+        // Procesar modo vivo por voz localmente
+        if (transcriptStr.includes('modo vivo')) {
+            activarModoVivo();
+            inputComando.value = transcriptRaw;
+        } 
+        else if (transcriptStr.includes('puedes dormir') || transcriptStr.includes('dormir alice')) {
+            desactivarModoVivo();
+            inputComando.value = transcriptRaw;
+        } 
+        else {
+            inputComando.value = transcriptRaw;
+            enviarMensajeAlServidor(transcriptRaw);
+        }
     };
 
     recognition.onerror = (event) => {
@@ -64,9 +103,40 @@ function restaurarMicrofono() {
     inputComando.placeholder = "Escribe un comando o envía voz...";
 }
 
-// ====== FASE 3A: SOCKET.IO & CEREBRO (RENDER) ======
-// Como ahora alojaste el frontend y backend juntos en Render, usamos window.location.origin
-// En el futuro, si llevas el frontend a Github, cambia esto por tu URL de Render manual ('https://alice-asistente-personal-3.onrender.com')
+// ====== MODOS Y TEMPORIZADORES DE ALICE ======
+function activarModoVivo() {
+    agregarMensajeChat("SISTEMA", "[SISTEMA] Modo Vivo activado. Alice tiene iniciativa.", "msg-alice");
+    socket.emit('activar_modo_vivo');
+    
+    if (modoVivoProgress) modoVivoProgress.style.display = 'block';
+    resetProgressTimer();
+}
+
+function desactivarModoVivo() {
+    agregarMensajeChat("SISTEMA", "[SISTEMA] Modo Vivo desactivado. Alice en reposo.", "msg-alice");
+    socket.emit('desactivar_modo_vivo');
+    
+    if (modoVivoProgress) modoVivoProgress.style.display = 'none';
+    if(progressInterval) clearInterval(progressInterval);
+}
+
+function resetProgressTimer() {
+    secondsModoVivo = 0;
+    if (progressBarFill) progressBarFill.style.width = '0%';
+    
+    if(progressInterval) clearInterval(progressInterval);
+    progressInterval = setInterval(() => {
+        secondsModoVivo++;
+        if (progressBarFill) progressBarFill.style.width = `${(secondsModoVivo / 60) * 100}%`;
+        
+        if (secondsModoVivo >= 60) {
+            secondsModoVivo = 0;
+            if (progressBarFill) progressBarFill.style.width = '0%';
+        }
+    }, 1000); 
+}
+
+// ====== SOCKET.IO (RENDER) ======
 const SERVER_URL = window.location.origin; 
 const socket = io(SERVER_URL);
 
@@ -80,38 +150,50 @@ socket.on('disconnect', () => {
     console.log("Desconectado de Alice");
 });
 
-// Recepción de Respuesta (La Voz de Alice): Crea un escuchador para el evento respuesta_alice
 socket.on('respuesta_alice', (data) => {
-    // Añade el texto al contenedor #historial-chat
-    if (data.texto) {
-        agregarMensajeChat("A", data.texto, "msg-alice");
+    if (data.texto) agregarMensajeChat("A", data.texto, "msg-alice");
+    if (data.pose) cambiarPoseAlice(data.pose);
+});
+
+// EVENTO DE INICIATIVA PROACTIVA
+socket.on('iniciativa_alice', (data) => {
+    playSystemBeep();
+
+    // Resetear timer visual para que arranque otros 60s
+    if (modoVivoProgress && modoVivoProgress.style.display === 'block') {
+        resetProgressTimer();
     }
 
-    // Cambia la clase del elemento #sprite-alice a la pose recibida
+    if (data.texto) {
+        agregarMensajeChat("A", `[ALICE INTUYE] ${data.texto}`, "msg-alice");
+    }
+
     if (data.pose) {
-        cambiarPoseAlice(data.pose);
+        // Transición de Alerta -> Hablando (según el prompt)
+        cambiarPoseAlice('alice-alerta');
+        setTimeout(() => {
+            cambiarPoseAlice('alice-hablando');
+        }, 1500); 
     }
 });
 
 function enviarMensajeAlServidor(texto) {
     if (!texto.trim()) return;
 
-    // Mostrar el mensaje en el input del chat
     agregarMensajeChat("U", texto, "msg-user");
     inputComando.value = '';
 
-    // Enviar evento socket 'mensaje_voz'
     if (socket && socket.connected) {
         cambiarPoseAlice('alice-pensativa');
-        socket.emit('mensaje_voz', { mensaje: texto });
+        // ATENCIÓN: El código provisto por el usuario en backend requiere 'data.texto', no 'data.mensaje'
+        socket.emit('mensaje_voz', { texto: texto });
     } else {
         agregarMensajeChat("A", "[MODO OFFLINE] Servidor no detectado. Revisa que Socket.io esté en línea.", "msg-alice");
         cambiarPoseAlice('alice-frustrada');
     }
 }
 
-// ====== FASE 2: GESTIÓN DEL SPRITE (NOVELA VISUAL) ======
-// Diccionario de imágenes (que ahora están en tu carpeta assets)
+// ====== FASE 2: GESTIÓN DEL SPRITE Y UI ======
 const poseSources = {
     'alice-reposo': 'assets/alice_reposo.png',
     'alice-hablando': 'assets/alice_hablando.png',
@@ -123,11 +205,9 @@ const poseSources = {
 function cambiarPoseAlice(nuevaClase) {
     if (!spriteAlice) return;
 
-    // Inyectamos un fade-out corto
     spriteAlice.style.opacity = '0';
     
     setTimeout(() => {
-        // En la mitad de la transición de opacidad (CSS dicta 0.3s -> 150ms es la mitad)
         if (poseSources[nuevaClase]) {
             spriteAlice.src = poseSources[nuevaClase];
         }
@@ -135,7 +215,7 @@ function cambiarPoseAlice(nuevaClase) {
         spriteAlice.style.opacity = '1';
     }, 150);
 
-    // Tras 8 segundos de silencio, devuelve a Alice a la clase .alice-reposo automáticamente.
+    // Retorno automático a reposo tras 8s de silencio
     if (nuevaClase !== 'alice-reposo') {
         clearTimeout(window.alicePoseTimeout);
         window.alicePoseTimeout = setTimeout(() => {
@@ -180,7 +260,6 @@ function agregarMensajeChat(avatar, texto, tipo) {
         
         historialChat.appendChild(msgDiv);
         
-        // Ejecutar efecto de escritura progresiva
         typeWriterEffect(p, texto);
     } else {
         msgDiv.innerHTML = `

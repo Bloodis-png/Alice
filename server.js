@@ -1,100 +1,97 @@
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
+const cors = require('cors');
 const { OpenAI } = require('openai');
 require('dotenv').config();
 
 const app = express();
-const server = http.createServer(app);
+app.use(cors());
 
-// Sirve los archivos estáticos del frontend (index.html, style.css, assets, etc.)
+// Servir los estáticos temporalmente para que render te muestre el frontend
 app.use(express.static(__dirname));
 
-// Es fundamental autorizar CORS al usar Socket.io para que tu frontend en Github pueda comunicarse con Render
-const io = new Server(server, {
-    cors: {
-        origin: "*", // En el futuro, restringe esto a tu dominio de Github Pages
-        methods: ["GET", "POST"]
-    }
-});
+const server = http.createServer(app);
+const io = new Server(server, { cors: { origin: "*" } });
 
-const PORT = process.env.PORT || 8080;
 const openaiAPI = process.env.OPENAI_API_KEY ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY }) : null;
 
-console.log(`📡 Núcleo activo: Servidor de Alice iniciado en puerto ${PORT}`);
-
-// Prompt Maestro
-const systemPrompt = `Eres Alice Sintética, una asistente de inteligencia artificial de alto rendimiento, seria, decidida y tecnológica.
-Tu tono es profesional, conciso y eficiente. Evitas el lenguaje excesivamente coloquial o dramático.
-Tu misión es optimizar y ayudar a Deriell. Responde a su petición rigurosamente.
-
-MUY IMPORTANTE: Tu salida siempre debe ser estrictamente un JSON válido con esta estructura (no incluyas markdown \`\`\`json):
-{
-  "texto": "Tu respuesta verbal en texto aquí...",
-  "pose": "ELIGE_LA_POSE"
-}
-
-Las poses permitidas son SOLAMENTE estas 4:
-- "alice-hablando": para explicaciones o diálogos.
-- "alice-alerta": para noticias, descubrimientos o advertencias.
-- "alice-frustrada": si no entiendes la orden o hay problemas técnicos.
-- "alice-pensativa": si estás dudando o diseñando una estrategia.`;
+let loopIniciativa = null; // Temporizador global
+let socketsConectados = 0;
 
 io.on('connection', (socket) => {
-    console.log(`✅ Cliente conectado al Socket [ID: ${socket.id}]`);
+    socketsConectados++;
+    console.log(`Deriell conectado. Total: ${socketsConectados}`);
 
-    // Escuchando el evento requerido: 'mensaje_voz'
+    // --- COMANDOS PASIVOS (RESPONDER) ---
     socket.on('mensaje_voz', async (data) => {
         try {
-            const userText = data.mensaje;
-            console.log(`[USER COMMAND]: ${userText}`);
-
             if (!openaiAPI) {
-                console.warn("No hay OPENAI_API_KEY. Usando simulación.");
-                setTimeout(() => {
-                    const fake = {
-                        texto: `Comando transcrito: "${userText}". Modo Simulación debido a ausencia de API Key.`,
-                        pose: "alice-hablando"
-                    };
-                    socket.emit('respuesta_alice', fake);
-                }, 1000);
-                return;
+                 socket.emit('respuesta_alice', { texto: `(Local) Comando: ${data.texto}`, pose: "alice-hablando" });
+                 return;
             }
-
-            // Llamada IA a OpenAI
             const completion = await openaiAPI.chat.completions.create({
-                model: "gpt-4-turbo", 
+                model: "gpt-4-turbo", // Ajuste del modelo a gpt-4-turbo o el que uses
                 messages: [
-                    { role: "system", content: systemPrompt },
-                    { role: "user", content: userText }
+                    { role: "system", content: process.env.ALICE_SYSTEM_PROMPT || "Eres Alice, una IA concisa y profesional." },
+                    { role: "user", content: data.texto }
                 ],
-                temperature: 0.6,
             });
-
-            let reply = completion.choices[0].message.content.trim();
-            if (reply.startsWith('```')) {
-                reply = reply.replace(/```json/gi, '').replace(/```/g, '').trim();
-            }
-
-            const parsedReply = JSON.parse(reply);
-            
-            // Emitiendo el evento requerido: 'respuesta_alice'
-            socket.emit('respuesta_alice', parsedReply);
-            
+            const respuestaTexto = completion.choices[0].message.content;
+            socket.emit('respuesta_alice', { texto: respuestaTexto, pose: "alice-hablando" });
         } catch (error) {
-            console.error("❌ Error en AI o parseo:", error.message);
-            socket.emit('respuesta_alice', {
-                texto: "Anomalía encontrada al procesar tu directiva.",
-                pose: "alice-frustrada"
-            });
+            socket.emit('respuesta_alice', { texto: "Error en el núcleo de la IA.", pose: "alice-frustrada" });
         }
     });
 
+    // --- ACTIVAR MODO VIVO ---
+    socket.on('activar_modo_vivo', () => {
+        console.log("Activando Modo Vivo por petición de Deriell.");
+        if (loopIniciativa) clearInterval(loopIniciativa); // Limpiar si ya existía
+
+        loopIniciativa = setInterval(async () => {
+            if (socketsConectados > 0) {
+                try {
+                    console.log("Generando iniciativa proactiva...");
+                    if (!openaiAPI) {
+                        io.emit('iniciativa_alice', { texto: "[MODO LOCAL] Interrupción proactiva local (fake).", pose: "alice-hablando" });
+                        return;
+                    }
+                    const completion = await openaiAPI.chat.completions.create({
+                        model: "gpt-4-turbo",
+                        messages: [
+                            { role: "system", content: process.env.ALICE_SYSTEM_PROMPT || "Eres Alice, una IA concisa y profesional." },
+                            // Instrucción proactiva estricta
+                            { role: "user", content: "[ALICE_INITIATIVE_PROTOCOL] Deriell está en stream. Lanza un tema de conversación interesante o una noticia breve sobre MMOs o Crimson Desert para que él pueda comentarla. Sé breve, profesional y tecnológica." }
+                        ],
+                    });
+                    const tema = completion.choices[0].message.content;
+                    // Emitir a TODOS los sockets conectados
+                    io.emit('iniciativa_alice', { texto: tema, pose: "alice-hablando" });
+                } catch (error) {
+                    console.log("Error en loop de iniciativa.", error);
+                }
+            }
+        }, 60000); // 1 minuto
+    });
+
+    // --- DESACTIVAR MODO VIVO ---
+    socket.on('desactivar_modo_vivo', () => {
+        console.log("Desactivando Modo Vivo. Alice en reposo.");
+        if (loopIniciativa) clearInterval(loopIniciativa);
+        loopIniciativa = null;
+    });
+
     socket.on('disconnect', () => {
-        console.log(`🔴 Cliente desconectado [ID: ${socket.id}]`);
+        socketsConectados--;
+        console.log(`Deriell desconectado. Total: ${socketsConectados}`);
+        // Si no hay nadie conectado, parar el loop por seguridad
+        if (socketsConectados === 0 && loopIniciativa) {
+            clearInterval(loopIniciativa);
+            loopIniciativa = null;
+        }
     });
 });
 
-server.listen(PORT, () => {
-    console.log(`🚀 Servidor Socket.io desplegado y escuchando en puerto ${PORT}`);
-});
+const PORT = process.env.PORT || 8080;
+server.listen(PORT, () => console.log(`Cerebro operativo en puerto ${PORT}`));
