@@ -45,7 +45,7 @@ let noticiasBuffer = [];
 async function rellenarBufferNoticias(socket) {
     if (!tvly) {
         console.warn("No se encontró TAVILY_API_KEY. Buffer simulado.");
-        noticiasBuffer.push("Dato de prueba: Faltan llaves de API en Render para leer noticias de verdad.");
+        noticiasBuffer.push("Dato de prueba: Faltan llaves de API de Tavily en Render para leer noticias.");
         return;
     }
 
@@ -74,14 +74,18 @@ async function rellenarBufferNoticias(socket) {
     }
 }
 
-const systemPrompt = `Eres Alice Sintética, una asistente de IA de alto rendimiento de Deriell, streamer.
-MUY IMPORTANTE: SIEMPRE debes responder exclusivamente con un objeto JSON válido con esta estructura:
-{
-  "texto": "Tu respuesta verbal clara y concisa.",
-  "pose": "ELIGE_LA_POSE"
-}
+const defaultSystemPrompt = `Eres Alice Sintética, una asistente de IA de alto rendimiento de Deriell, streamer.
 Las Poses válidas son únicamente: "alice-hablando", "alice-alerta", "alice-frustrada", "alice-pensativa".
-No incluyas nada fuera del JSON. Devuelve directamente el JSON.`;
+Ignora cualquier bloque markdown.`;
+
+function getSystemPrompt() {
+    let base = process.env.ALICE_SYSTEM_PROMPT || defaultSystemPrompt;
+    // OpenAI exige que la palabra "JSON" esté estrictamente en el prompt si usamos response_format
+    if (!base.toLowerCase().includes("json")) {
+        base += `\n\nMUY IMPORTANTE: SIEMPRE debes responder exclusivamente con un objeto JSON válido con esta estructura: {"texto": "Tu respuesta", "pose": "alice-hablando"}`;
+    }
+    return base;
+}
 
 const toolDefinition = {
     type: "function",
@@ -99,24 +103,23 @@ const toolDefinition = {
 };
 
 async function pedirAOpenAIChatNode(mensajesHistorial, socket) {
+    // LLAMADA 1: Puede usar Tools. NO forzamos json_object puro aquí para evitar rechazos de 400 Bad Request de OpenAI al mezclar herramientas.
     const completion = await openaiAPI.chat.completions.create({
         model: "gpt-4o-mini", 
         messages: mensajesHistorial,
         tools: [toolDefinition],
         tool_choice: "auto",
         temperature: 0.6,
-        response_format: { type: "json_object" } // Fuerza JSON SIEMPRE
     });
 
     const initialMsg = completion.choices[0].message;
 
-    // Herramienta lanzada por la propia IA
+    // Si decidió buscar en internet
     if (initialMsg.tool_calls) {
         const toolCall = initialMsg.tool_calls[0];
         if (toolCall.function.name === "buscar_en_internet") {
             const args = JSON.parse(toolCall.function.arguments);
             
-            // Envía mensaje épico al chat
             socket.emit('respuesta_alice', { 
                 texto: `Conectando con servidores satélite. Analizando flujo de datos para: "${args.query}"...`, 
                 pose: "alice-pensativa" 
@@ -127,11 +130,12 @@ async function pedirAOpenAIChatNode(mensajesHistorial, socket) {
             mensajesHistorial.push(initialMsg);
             mensajesHistorial.push({ role: "tool", tool_call_id: toolCall.id, name: "buscar_en_internet", content: resultadosBusqueda });
 
+            // LLAMADA 2: Responde definitivamente. AQUÍ SÍ forzamos JSON estricto.
             const secondCompletion = await openaiAPI.chat.completions.create({
                 model: "gpt-4o-mini",
                 messages: mensajesHistorial,
                 temperature: 0.6,
-                response_format: { type: "json_object" } // Fuerza JSON SIEMPRE
+                response_format: { type: "json_object" } 
             });
 
             return secondCompletion.choices[0].message.content.trim();
@@ -145,7 +149,6 @@ function parsearRespuestaJSON(reply) {
     try {
         let cleanReply = reply.trim();
         
-        // Extractor profundo de JSON por si OpenAI fue terco
         const fBrace = cleanReply.indexOf('{');
         const lBrace = cleanReply.lastIndexOf('}');
         if (fBrace !== -1 && lBrace !== -1) {
@@ -171,7 +174,7 @@ io.on('connection', (socket) => {
             }
 
             const mensajes = [
-                { role: "system", content: process.env.ALICE_SYSTEM_PROMPT || systemPrompt },
+                { role: "system", content: getSystemPrompt() },
                 { role: "user", content: data.texto }
             ];
 
@@ -179,19 +182,18 @@ io.on('connection', (socket) => {
             socket.emit('respuesta_alice', parsearRespuestaJSON(reply));
             
         } catch (error) {
-            console.error(error);
-            socket.emit('respuesta_alice', { texto: "Cortocircuito interno.", pose: "alice-frustrada" });
+            console.error("Error general en mensaje_voz:", error);
+            socket.emit('respuesta_alice', { texto: `Cortocircuito: ${error.message}`, pose: "alice-frustrada" });
         }
     });
 
     socket.on('activar_modo_vivo', () => {
         if (loopIniciativa) clearInterval(loopIniciativa);
-        console.log("Modo vivo (Tavily Buffer) activado.");
+        console.log("Modo vivo activado.");
 
         loopIniciativa = setInterval(async () => {
             if (socketsConectados > 0 && openaiAPI) {
                 try {
-                    // Si el Buffer está vacío o agotado, llenarlo:
                     if (noticiasBuffer.length === 0) {
                         await rellenarBufferNoticias(socket);
                     }
@@ -200,22 +202,26 @@ io.on('connection', (socket) => {
                     if (!noticiaCruda) return; 
 
                     const mensajes = [
-                        { role: "system", content: process.env.ALICE_SYSTEM_PROMPT || systemPrompt },
-                        { role: "user", content: `[ALICE_INITIATIVE_PROTOCOL] Menciona brevemente a Deriell este dato: "${noticiaCruda}". Responde ÚNICAMENTE con JSON, sin markdown.` }
+                        { role: "system", content: getSystemPrompt() },
+                        { role: "user", content: `[ALICE_INITIATIVE_PROTOCOL] Menciona brevemente a Deriell este dato: "${noticiaCruda}". Habla en JSON.` }
                     ];
 
                     const completion = await openaiAPI.chat.completions.create({
                         model: "gpt-4o-mini",
                         messages: mensajes,
                         temperature: 0.7,
-                        response_format: { type: "json_object" } // Fuerza JSON SIEMPRE
+                        response_format: { type: "json_object" } 
                     });
 
                     const reply = completion.choices[0].message.content.trim();
                     const obj = parsearRespuestaJSON(reply);
 
                     io.emit('iniciativa_alice', { texto: obj.texto, pose: obj.pose || "alice-hablando" });
-                } catch (error) { console.error("Error en buffer:", error); }
+                } catch (error) { 
+                    console.error("Error en buffer:", error); 
+                    // Avisamos al UI por si acaso crashea silencioso
+                    io.emit('iniciativa_alice', { texto: `Error proactivo: ${error.message}`, pose: "alice-frustrada" });
+                }
             }
         }, 60000); 
     });
