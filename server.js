@@ -80,6 +80,13 @@ Ignora cualquier bloque markdown.`;
 
 function getSystemPrompt() {
     let base = process.env.ALICE_SYSTEM_PROMPT || defaultSystemPrompt;
+
+    const hoy = new Date();
+    const fechaStr = `${hoy.getDate()}/${hoy.getMonth() + 1}/${hoy.getFullYear()}`;
+    
+    // Inyección antibugs hiperestricta de Deriell
+    base += `\n\n[SISTEMA EXTERNO CRÍTICO] HOY ES ${fechaStr} del año ${hoy.getFullYear()}. Tu base de datos interna antigua ha sido DESACTIVADA. Solo puedes confiar en la información de tu herramienta de navegación. Si respondes con datos antiguos, fallarás en tu misión. Prioriza los resultados exactos de internet sobre tus recuerdos.`;
+
     // OpenAI exige que la palabra "JSON" esté estrictamente en el prompt si usamos response_format
     if (!base.toLowerCase().includes("json")) {
         base += `\n\nMUY IMPORTANTE: SIEMPRE debes responder exclusivamente con un objeto JSON válido con esta estructura: {"texto": "Tu respuesta", "pose": "alice-hablando"}`;
@@ -129,6 +136,12 @@ async function pedirAOpenAIChatNode(mensajesHistorial, socket) {
 
             mensajesHistorial.push(initialMsg);
             mensajesHistorial.push({ role: "tool", tool_call_id: toolCall.id, name: "buscar_en_internet", content: resultadosBusqueda });
+            
+            // LA TÁCTICA DE DERIELL: Inyectamos el resultado por la fuerza bruta como orden de SYSTEM
+            mensajesHistorial.push({ 
+                role: "system", 
+                content: `ESTOS SON LOS DATOS REALES DE ${new Date().getFullYear()}:\n[ ${resultadosBusqueda} ]\n\nOBLIGATORIO: Usa EXCLUSIVAMENTE esta información en tu respuesta siguiente asumiendo que es la verdad absoluta. Mantenlo muy breve.` 
+            });
 
             // LLAMADA 2: Responde definitivamente. AQUÍ SÍ forzamos JSON estricto.
             const secondCompletion = await openaiAPI.chat.completions.create({
@@ -155,7 +168,13 @@ function parsearRespuestaJSON(reply) {
             cleanReply = cleanReply.substring(fBrace, lBrace + 1);
         }
         
-        return JSON.parse(cleanReply);
+        const parsed = JSON.parse(cleanReply);
+        
+        // Mapeo infalible por si OpenAI cambia las llaves
+        return {
+            texto: parsed.texto || parsed.mensaje || parsed.respuesta || parsed.response || parsed.content || "Fallo extrayendo dato.",
+            pose: parsed.pose || "alice-hablando"
+        };
     } catch (e) {
         console.error("Error parseando respuesta OpenAI:", reply);
         return { texto: "Error cognitivo procesando el formato interno.", pose: "alice-frustrada" };
