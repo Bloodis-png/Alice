@@ -44,14 +44,14 @@ let noticiasBuffer = [];
 
 async function rellenarBufferNoticias(socket) {
     if (!tvly) {
-        console.warn("No se encontró TAVILY_API_KEY. Buffer funcionará simulado.");
-        noticiasBuffer.push("Modo protegido: El autor de Marvel Rivals ha tuiteado algo nuevo.");
+        console.warn("No se encontró TAVILY_API_KEY. Buffer simulado.");
+        noticiasBuffer.push("Dato de prueba: Faltan llaves de API en Render para leer noticias de verdad.");
         return;
     }
 
     if (socket) {
         socket.emit('respuesta_alice', { 
-            texto: "Conectando con servidores satélite... Extrayendo matrices de datos del mundo exterior para alimentar mi proactividad.", 
+            texto: "Refrescando satélites... Extrayendo matrices de datos del mundo exterior para mi sistema proactivo.", 
             pose: "alice-pensativa" 
         });
     }
@@ -70,29 +70,28 @@ async function rellenarBufferNoticias(socket) {
         }
     } catch (e) {
         console.error("Error recargando Buffer Tavily:", e.message);
-        noticiasBuffer.push("Bloqueo de proxy al intentar robar noticias satelitales.");
+        noticiasBuffer.push("Bloqueo temporal de proxy satelital.");
     }
 }
 
-const systemPrompt = `Eres Alice Sintética, una asistente de IA de alto rendimiento.
-Tu misión principal es asistir a Deriell, streamer.
-MUY IMPORTANTE: SIEMPRE debes responder exclusivamente con un JSON válido con esta estructura:
+const systemPrompt = `Eres Alice Sintética, una asistente de IA de alto rendimiento de Deriell, streamer.
+MUY IMPORTANTE: SIEMPRE debes responder exclusivamente con un objeto JSON válido con esta estructura:
 {
   "texto": "Tu respuesta verbal clara y concisa.",
   "pose": "ELIGE_LA_POSE"
 }
-Poses: "alice-hablando", "alice-alerta", "alice-frustrada", "alice-pensativa".
-Ignora cualquier bloque markdown (no escribas \`\`\`json).`;
+Las Poses válidas son únicamente: "alice-hablando", "alice-alerta", "alice-frustrada", "alice-pensativa".
+No incluyas nada fuera del JSON. Devuelve directamente el JSON.`;
 
 const toolDefinition = {
     type: "function",
     function: {
         name: "buscar_en_internet",
-        description: "Usa este método para cosas actuales o consultas concretas sobre el mundo real.",
+        description: "Usa este método para buscar información en internet (Tavily) sobre noticias, fechas, juegos o la actualidad.",
         parameters: {
             type: "object",
             properties: {
-                query: { type: "string" }
+                query: { type: "string", description: "Búsqueda precisa en internet." }
             },
             required: ["query"]
         }
@@ -106,6 +105,7 @@ async function pedirAOpenAIChatNode(mensajesHistorial, socket) {
         tools: [toolDefinition],
         tool_choice: "auto",
         temperature: 0.6,
+        response_format: { type: "json_object" } // Fuerza JSON SIEMPRE
     });
 
     const initialMsg = completion.choices[0].message;
@@ -131,6 +131,7 @@ async function pedirAOpenAIChatNode(mensajesHistorial, socket) {
                 model: "gpt-4o-mini",
                 messages: mensajesHistorial,
                 temperature: 0.6,
+                response_format: { type: "json_object" } // Fuerza JSON SIEMPRE
             });
 
             return secondCompletion.choices[0].message.content.trim();
@@ -140,12 +141,21 @@ async function pedirAOpenAIChatNode(mensajesHistorial, socket) {
     return initialMsg.content.trim();
 }
 
-function parsearRespuestaJSON(reply, socket) {
+function parsearRespuestaJSON(reply) {
     try {
-        if (reply.startsWith('```')) reply = reply.replace(/```json/gi, '').replace(/```/g, '').trim();
-        return JSON.parse(reply);
+        let cleanReply = reply.trim();
+        
+        // Extractor profundo de JSON por si OpenAI fue terco
+        const fBrace = cleanReply.indexOf('{');
+        const lBrace = cleanReply.lastIndexOf('}');
+        if (fBrace !== -1 && lBrace !== -1) {
+            cleanReply = cleanReply.substring(fBrace, lBrace + 1);
+        }
+        
+        return JSON.parse(cleanReply);
     } catch (e) {
-        return { texto: "Fallo JSON en la respuesta.", pose: "alice-frustrada" };
+        console.error("Error parseando respuesta OpenAI:", reply);
+        return { texto: "Error cognitivo procesando el formato interno.", pose: "alice-frustrada" };
     }
 }
 
@@ -166,9 +176,10 @@ io.on('connection', (socket) => {
             ];
 
             const reply = await pedirAOpenAIChatNode(mensajes, socket);
-            socket.emit('respuesta_alice', parsearRespuestaJSON(reply, socket));
+            socket.emit('respuesta_alice', parsearRespuestaJSON(reply));
             
         } catch (error) {
+            console.error(error);
             socket.emit('respuesta_alice', { texto: "Cortocircuito interno.", pose: "alice-frustrada" });
         }
     });
@@ -180,30 +191,29 @@ io.on('connection', (socket) => {
         loopIniciativa = setInterval(async () => {
             if (socketsConectados > 0 && openaiAPI) {
                 try {
-                    // Si el Buffer está vacío o agotado, llenarlo antes de informar:
+                    // Si el Buffer está vacío o agotado, llenarlo:
                     if (noticiasBuffer.length === 0) {
                         await rellenarBufferNoticias(socket);
                     }
 
-                    // Sacar una noticia del array y reducir credenciales
                     const noticiaCruda = noticiasBuffer.shift(); 
-                    if (!noticiaCruda) return; // Fallback por si la recarga falló severamente
+                    if (!noticiaCruda) return; 
 
                     const mensajes = [
                         { role: "system", content: process.env.ALICE_SYSTEM_PROMPT || systemPrompt },
-                        { role: "user", content: `[ALICE_INITIATIVE_PROTOCOL] Tienes este dato fresco recién bajado de los satélites: "${noticiaCruda}". Dilo rápidamente, en 15-20 palabras de manera carismática para que Deriell lo comente en su directo.` }
+                        { role: "user", content: `[ALICE_INITIATIVE_PROTOCOL] Menciona brevemente a Deriell este dato: "${noticiaCruda}". Responde ÚNICAMENTE con JSON, sin markdown.` }
                     ];
 
                     const completion = await openaiAPI.chat.completions.create({
                         model: "gpt-4o-mini",
                         messages: mensajes,
                         temperature: 0.7,
+                        response_format: { type: "json_object" } // Fuerza JSON SIEMPRE
                     });
 
                     const reply = completion.choices[0].message.content.trim();
-                    const obj = parsearRespuestaJSON(reply, socket);
+                    const obj = parsearRespuestaJSON(reply);
 
-                    // Emito directamente la iniciativa con la noticia real formateada por IA
                     io.emit('iniciativa_alice', { texto: obj.texto, pose: obj.pose || "alice-hablando" });
                 } catch (error) { console.error("Error en buffer:", error); }
             }
