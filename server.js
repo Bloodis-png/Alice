@@ -7,6 +7,9 @@ require('dotenv').config();
 const app = express();
 const server = http.createServer(app);
 
+// Sirve los archivos estáticos del frontend (index.html, style.css, assets, etc.)
+app.use(express.static(__dirname));
+
 // Es fundamental autorizar CORS al usar Socket.io para que tu frontend en Github pueda comunicarse con Render
 const io = new Server(server, {
     cors: {

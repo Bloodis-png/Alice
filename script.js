@@ -65,8 +65,9 @@ function restaurarMicrofono() {
 }
 
 // ====== FASE 3A: SOCKET.IO & CEREBRO (RENDER) ======
-// URL: [PEGA AQUÍ TU URL DE RENDER]
-const SERVER_URL = 'http://localhost:8080'; // Cambia esto por ej: 'https://mi-backend-alice.onrender.com'
+// Como ahora alojaste el frontend y backend juntos en Render, usamos window.location.origin
+// En el futuro, si llevas el frontend a Github, cambia esto por tu URL de Render manual ('https://alice-asistente-personal-3.onrender.com')
+const SERVER_URL = window.location.origin; 
 const socket = io(SERVER_URL);
 
 socket.on('connect', () => {
