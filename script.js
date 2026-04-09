@@ -51,21 +51,7 @@ if (SpeechRecognition) {
 
     recognition.onresult = (event) => {
         const transcriptRaw = event.results[0][0].transcript;
-        const transcriptStr = transcriptRaw.trim().toLowerCase();
-        
-        // Procesar modo vivo por voz localmente
-        if (transcriptStr.includes('modo vivo')) {
-            activarModoVivo();
-            inputComando.value = transcriptRaw;
-        } 
-        else if (transcriptStr.includes('puedes dormir') || transcriptStr.includes('dormir alice')) {
-            desactivarModoVivo();
-            inputComando.value = transcriptRaw;
-        } 
-        else {
-            inputComando.value = transcriptRaw;
-            enviarMensajeAlServidor(transcriptRaw);
-        }
+        enviarMensajeAlServidor(transcriptRaw);
     };
 
     recognition.onerror = (event) => {
@@ -177,16 +163,28 @@ socket.on('iniciativa_alice', (data) => {
     }
 });
 
-function enviarMensajeAlServidor(texto) {
-    if (!texto.trim()) return;
+function enviarMensajeAlServidor(textoOriginal) {
+    if (!textoOriginal.trim()) return;
 
-    agregarMensajeChat("U", texto, "msg-user");
+    agregarMensajeChat("U", textoOriginal, "msg-user");
     inputComando.value = '';
+
+    const textoBajo = textoOriginal.toLowerCase();
+
+    // === INTERCEPTAR COMANDOS (Escrito y Voz) ===
+    if (textoBajo.includes('modo vivo') || textoBajo.includes('modo viva')) {
+        activarModoVivo();
+        return;
+    }
+    
+    if (textoBajo.includes('dormir') || textoBajo.includes('reposo')) {
+        desactivarModoVivo();
+        return;
+    }
 
     if (socket && socket.connected) {
         cambiarPoseAlice('alice-pensativa');
-        // ATENCIÓN: El código provisto por el usuario en backend requiere 'data.texto', no 'data.mensaje'
-        socket.emit('mensaje_voz', { texto: texto });
+        socket.emit('mensaje_voz', { texto: textoOriginal });
     } else {
         agregarMensajeChat("A", "[MODO OFFLINE] Servidor no detectado. Revisa que Socket.io esté en línea.", "msg-alice");
         cambiarPoseAlice('alice-frustrada');
