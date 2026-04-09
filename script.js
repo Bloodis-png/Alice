@@ -72,7 +72,7 @@ const socket = io(SERVER_URL);
 
 socket.on('connect', () => {
     console.log('Enlace con Alice establecido');
-    agregarMensajeChat("A", "Enlace con Alice establecido.", "msg-alice");
+    agregarMensajeChat("A", "Sistemas operativos. Enlace con Alice verificado. Esperando órdenes de Deriell.", "msg-alice");
     cambiarPoseAlice('alice-reposo');
 });
 
@@ -135,13 +135,28 @@ function cambiarPoseAlice(nuevaClase) {
         spriteAlice.style.opacity = '1';
     }, 150);
 
-    // Tras 5 segundos de silencio, devuelve a Alice a la clase .alice-reposo automáticamente.
+    // Tras 8 segundos de silencio, devuelve a Alice a la clase .alice-reposo automáticamente.
     if (nuevaClase !== 'alice-reposo') {
         clearTimeout(window.alicePoseTimeout);
         window.alicePoseTimeout = setTimeout(() => {
             cambiarPoseAlice('alice-reposo');
-        }, 5000);
+        }, 8000);
     }
+}
+
+// Efecto máquina de escribir (Typewriter)
+function typeWriterEffect(element, text, speed = 30) {
+    let i = 0;
+    element.innerHTML = '';
+    function type() {
+        if (i < text.length) {
+            element.innerHTML += text.charAt(i);
+            i++;
+            historialChat.scrollTop = historialChat.scrollHeight;
+            setTimeout(type, speed);
+        }
+    }
+    type();
 }
 
 function agregarMensajeChat(avatar, texto, tipo) {
@@ -151,17 +166,28 @@ function agregarMensajeChat(avatar, texto, tipo) {
     msgDiv.className = `message ${tipo}`;
     
     if (tipo === 'msg-alice') {
-        msgDiv.innerHTML = `
-            <div class="avatar avatar-alice">${avatar}</div>
-            <div class="msg-bubble"><p>${texto}</p></div>
-        `;
+        const avatarDiv = document.createElement('div');
+        avatarDiv.className = 'avatar avatar-alice';
+        avatarDiv.innerText = avatar;
+
+        const bubbleDiv = document.createElement('div');
+        bubbleDiv.className = 'msg-bubble';
+        const p = document.createElement('p');
+        
+        bubbleDiv.appendChild(p);
+        msgDiv.appendChild(avatarDiv);
+        msgDiv.appendChild(bubbleDiv);
+        
+        historialChat.appendChild(msgDiv);
+        
+        // Ejecutar efecto de escritura progresiva
+        typeWriterEffect(p, texto);
     } else {
         msgDiv.innerHTML = `
             <div class="msg-bubble"><p>${texto}</p></div>
             <div class="avatar avatar-user">${avatar}</div>
         `;
+        historialChat.appendChild(msgDiv);
+        historialChat.scrollTop = historialChat.scrollHeight;
     }
-
-    historialChat.appendChild(msgDiv);
-    historialChat.scrollTop = historialChat.scrollHeight;
 }

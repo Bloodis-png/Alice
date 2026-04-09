@@ -76,7 +76,7 @@ body {
 .top-left {
     position: absolute;
     top: 20px;
-    left: 20px;
+    left: 320px; /* Desplazado a la zona del estudio para no tapar el Panel de Mando */
 }
 
 .bottom-left {
@@ -434,15 +434,20 @@ body {
     color: transparent; /* Oculta el texto alt si la imagen no se encuentra */
     /* Transición suave solicitada (fade-in/out y transform) */
     transition: opacity 0.3s ease-in-out, transform 0.3s ease-in-out;
+    
+    /* Máscara de limpieza visual: 
+       Mezclará mejor los fondos falsos hasta que pongas PNGs 100% transparentes */
+    mix-blend-mode: multiply;
+    filter: drop-shadow(0 0 10px rgba(0,0,0,0.5));
 }
 
 /* Estados de Clase de Alice */
-/* Nota: Asegúrate de guardar tus 5 PNG en una carpeta 'assets/' con estos nombres exactos */
-.alice-reposo { content: url('assets/alice_reposo.png'); }
-.alice-hablando { content: url('assets/alice_hablando.png'); }
-.alice-pensativa { content: url('assets/alice_pensativa.png'); }
-.alice-alerta { content: url('assets/alice_alerta.png'); }
-.alice-frustrada { content: url('assets/alice_frustrada.png'); }
+/* Nota: Asegúrate de guardar tus 5 PNG verdaderos sin fondo */
+.alice-reposo { content: url('assets/alice_reposo.png'); transform: translateX(-50%) translateY(0); }
+.alice-hablando { content: url('assets/alice_hablando.png'); transform: translateX(-50%) translateY(0); }
+.alice-pensativa { content: url('assets/alice_pensativa.png'); transform: translateX(-50%) translateY(0); }
+.alice-alerta { content: url('assets/alice_alerta.png'); transform: translateX(-50%) translateY(0); }
+.alice-frustrada { content: url('assets/alice_frustrada.png'); transform: translateX(-20%) translateY(0); /* Ejemplo: sentada un poco desplazada */ }
 
 /* =========================================
    COLUMNA DERECHA: NOTICIAS & MEMORIA
