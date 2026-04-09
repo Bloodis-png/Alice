@@ -135,6 +135,7 @@ body {
     padding: 24px;
     height: 100%;
     z-index: 20; /* Por encima del estudio */
+    overflow: hidden; /* Fija definitivamente el contenedor al 100% de la ventana */
 }
 
 /* Header de cada panel/sección */

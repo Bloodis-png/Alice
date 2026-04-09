@@ -250,6 +250,12 @@ function agregarMensajeChat(avatar, texto, tipo) {
 
         const bubbleDiv = document.createElement('div');
         bubbleDiv.className = 'msg-bubble';
+        
+        // Si el texto incluye la frase épica de internet, aplicamos la clase especial animada
+        if (texto.toLowerCase().includes('satélite') || texto.toLowerCase().includes('analizando flujo')) {
+            bubbleDiv.classList.add('msg-satellite');
+        }
+
         const p = document.createElement('p');
         
         bubbleDiv.appendChild(p);
