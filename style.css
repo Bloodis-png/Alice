@@ -161,6 +161,7 @@ body {
     display: flex;
     flex-direction: column;
     overflow: hidden;
+    min-height: 0; /* Clave de CSS Flexbox: permite que el hijo con overflow-y haga scroll en lugar de estirar toda la página */
 }
 
 /* =========================================
@@ -241,6 +242,20 @@ body {
     background: var(--msg-alice-bg);
     border: 1px solid var(--msg-alice-border);
     border-top-left-radius: 2px;
+}
+
+.msg-satellite {
+    background: rgba(138, 43, 226, 0.05) !important;
+    border: 1px dashed var(--color-accent) !important;
+    color: #E2CFFD;
+    font-style: italic;
+    animation: pulseSatellite 2s infinite ease-in-out;
+}
+
+@keyframes pulseSatellite {
+    0% { box-shadow: 0 0 0px rgba(138, 43, 226, 0); }
+    50% { box-shadow: 0 0 15px rgba(138, 43, 226, 0.4); }
+    100% { box-shadow: 0 0 0px rgba(138, 43, 226, 0); }
 }
 
 .msg-user .msg-bubble {
