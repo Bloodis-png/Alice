@@ -15,9 +15,11 @@ if (SpeechRecognition) {
     recognition.continuous = false;
     recognition.interimResults = false;
 
+    // Feedback Visual: Haz que el botón del micrófono cambie de color o brille mientras Alice esté 'escuchando'
     recognition.onstart = () => {
         isRecording = true;
-        botonMicrofono.style.backgroundColor = '#e11d48'; // Rojo para indicar que escucha
+        botonMicrofono.style.backgroundColor = '#e11d48'; // Rojo carmesí
+        botonMicrofono.style.boxShadow = '0 0 15px #e11d48';
         inputComando.placeholder = "Escuchando voz...";
     };
 
@@ -58,96 +60,91 @@ inputComando.addEventListener('keypress', (e) => {
 function restaurarMicrofono() {
     isRecording = false;
     botonMicrofono.style.backgroundColor = '';
+    botonMicrofono.style.boxShadow = '';
     inputComando.placeholder = "Escribe un comando o envía voz...";
 }
 
-// ====== FASE 3A: WEBSOCKET & CEREBRO (RENDER) ======
-// Cambia esto por la URL de tu servidor Render cuando lo despliegues
-// Ejemplo: wss://tu-backend-alice.onrender.com
-const WS_URL = 'ws://localhost:8080';
-let socket;
+// ====== FASE 3A: SOCKET.IO & CEREBRO (RENDER) ======
+// URL: [PEGA AQUÍ TU URL DE RENDER]
+const SERVER_URL = 'http://localhost:8080'; // Cambia esto por ej: 'https://mi-backend-alice.onrender.com'
+const socket = io(SERVER_URL);
 
-function conectarWebSocket() {
-    socket = new WebSocket(WS_URL);
+socket.on('connect', () => {
+    console.log('Enlace con Alice establecido');
+    agregarMensajeChat("A", "Enlace con Alice establecido.", "msg-alice");
+    cambiarPoseAlice('alice-reposo');
+});
 
-    socket.onopen = () => {
-        console.log("Conectado al servidor de Alice.");
-        agregarMensajeChat("A", "Conexión con núcleo Render establecida.", "msg-alice");
-    };
+socket.on('disconnect', () => {
+    console.log("Desconectado de Alice");
+});
 
-    socket.onmessage = (event) => {
-        const data = JSON.parse(event.data);
-        
-        // Fase 3A (Boca): Mostrar respuesta
-        if (data.texto) {
-            agregarMensajeChat("A", data.texto, "msg-alice");
-        }
-
-        // Fase 3A / Fase 2 (El Cuerpo): Actualizar clase CSS de Sprite Alice
-        if (data.pose) {
-            cambiarPoseAlice(data.pose);
-        }
-    };
-
-    socket.onclose = () => {
-        console.log("Desconectado. Reintentando...");
-        setTimeout(conectarWebSocket, 5000); // Reintento automático
-    };
-    
-    socket.onerror = (err) => {
-        console.warn("WebSocket no disponible por el momento. (Asegúrate de arrancar tu server.js)", err);
+// Recepción de Respuesta (La Voz de Alice): Crea un escuchador para el evento respuesta_alice
+socket.on('respuesta_alice', (data) => {
+    // Añade el texto al contenedor #historial-chat
+    if (data.texto) {
+        agregarMensajeChat("A", data.texto, "msg-alice");
     }
-}
 
-conectarWebSocket();
+    // Cambia la clase del elemento #sprite-alice a la pose recibida
+    if (data.pose) {
+        cambiarPoseAlice(data.pose);
+    }
+});
 
 function enviarMensajeAlServidor(texto) {
     if (!texto.trim()) return;
 
-    // Mostrar el mensaje en UI
+    // Mostrar el mensaje en el input del chat
     agregarMensajeChat("U", texto, "msg-user");
     inputComando.value = '';
 
-    // Enviar data
-    if (socket && socket.readyState === WebSocket.OPEN) {
-        // Al enviar comando, que Alice luzca pensativa temporalmente
+    // Enviar evento socket 'mensaje_voz'
+    if (socket && socket.connected) {
         cambiarPoseAlice('alice-pensativa');
-        socket.send(JSON.stringify({ mensaje: texto }));
+        socket.emit('mensaje_voz', { mensaje: texto });
     } else {
-        // En caso de que no haya server, simulamos offline
-        agregarMensajeChat("A", "[MODO OFFLINE] Sistema desconectado del backend central.", "msg-alice");
+        agregarMensajeChat("A", "[MODO OFFLINE] Servidor no detectado. Revisa que Socket.io esté en línea.", "msg-alice");
         cambiarPoseAlice('alice-frustrada');
     }
 }
 
 // ====== FASE 2: GESTIÓN DEL SPRITE (NOVELA VISUAL) ======
+// Diccionario de imágenes (que ahora están en tu carpeta assets)
+const poseSources = {
+    'alice-reposo': 'assets/alice_reposo.png',
+    'alice-hablando': 'assets/alice_hablando.png',
+    'alice-pensativa': 'assets/alice_pensativa.png',
+    'alice-alerta': 'assets/alice_alerta.png',
+    'alice-frustrada': 'assets/alice_frustrada.png'
+};
+
 function cambiarPoseAlice(nuevaClase) {
-    if(!spriteAlice) return;
+    if (!spriteAlice) return;
 
-    // Array de posibles poses (Fase 2)
-    const clasesPosibles = [
-        'alice-reposo', 
-        'alice-hablando', 
-        'alice-pensativa', 
-        'alice-alerta', 
-        'alice-frustrada'
-    ];
+    // Inyectamos un fade-out corto
+    spriteAlice.style.opacity = '0';
     
-    spriteAlice.classList.remove(...clasesPosibles);
-    spriteAlice.classList.add(nuevaClase);
+    setTimeout(() => {
+        // En la mitad de la transición de opacidad (CSS dicta 0.3s -> 150ms es la mitad)
+        if (poseSources[nuevaClase]) {
+            spriteAlice.src = poseSources[nuevaClase];
+        }
+        spriteAlice.className = nuevaClase;
+        spriteAlice.style.opacity = '1';
+    }, 150);
 
-    // Animación de retorno a la normalidad si es necesario (ej: tras 8 segundos)
+    // Tras 5 segundos de silencio, devuelve a Alice a la clase .alice-reposo automáticamente.
     if (nuevaClase !== 'alice-reposo') {
         clearTimeout(window.alicePoseTimeout);
         window.alicePoseTimeout = setTimeout(() => {
-            spriteAlice.classList.remove(...clasesPosibles);
-            spriteAlice.classList.add('alice-reposo');
-        }, 8000);
+            cambiarPoseAlice('alice-reposo');
+        }, 5000);
     }
 }
 
 function agregarMensajeChat(avatar, texto, tipo) {
-    if(!historialChat) return;
+    if (!historialChat) return;
 
     const msgDiv = document.createElement('div');
     msgDiv.className = `message ${tipo}`;

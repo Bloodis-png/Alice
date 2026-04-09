@@ -1,58 +1,66 @@
-// ====== FASE 3A: CEREBRO DE ALICE EN NODE.JS ======
-const { WebSocketServer } = require('ws');
+const express = require('express');
+const http = require('http');
+const { Server } = require('socket.io');
 const { OpenAI } = require('openai');
 require('dotenv').config();
 
-// Servidor WebSocket (Funcionará en Render y localmente)
-const PORT = process.env.PORT || 8080;
-const wss = new WebSocketServer({ port: PORT });
-console.log(`📡 Núcleo activo: Servidor de Alice iniciado en puerto ${PORT}`);
+const app = express();
+const server = http.createServer(app);
 
-// Instancia OpenAI - Se requiere configurar heroku/render env vars con OPENAI_API_KEY
+// Es fundamental autorizar CORS al usar Socket.io para que tu frontend en Github pueda comunicarse con Render
+const io = new Server(server, {
+    cors: {
+        origin: "*", // En el futuro, restringe esto a tu dominio de Github Pages
+        methods: ["GET", "POST"]
+    }
+});
+
+const PORT = process.env.PORT || 8080;
 const openaiAPI = process.env.OPENAI_API_KEY ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY }) : null;
 
-// Prompt Maestro de Personalidad
+console.log(`📡 Núcleo activo: Servidor de Alice iniciado en puerto ${PORT}`);
+
+// Prompt Maestro
 const systemPrompt = `Eres Alice Sintética, una asistente de inteligencia artificial de alto rendimiento, seria, decidida y tecnológica.
 Tu tono es profesional, conciso y eficiente. Evitas el lenguaje excesivamente coloquial o dramático.
-Tu misión es optimizar y ayudar en las tareas y el stream de Deriell. Responde a su petición rigurosamente.
+Tu misión es optimizar y ayudar a Deriell. Responde a su petición rigurosamente.
 
-MUY IMPORTANTE: Tu salida siempre debe ser estrictamente un JSON válido con esta estructura (no incluyas bloques \`\`\`json ni markdown):
+MUY IMPORTANTE: Tu salida siempre debe ser estrictamente un JSON válido con esta estructura (no incluyas markdown \`\`\`json):
 {
   "texto": "Tu respuesta verbal en texto aquí...",
   "pose": "ELIGE_LA_POSE"
 }
 
 Las poses permitidas son SOLAMENTE estas 4:
-- "alice-hablando": para explicaciones normales o comunicación estándar.
-- "alice-alerta": para reportar noticias importantes, urgencias o descubrimientos emocionantes.
-- "alice-frustrada": si no entiendes la orden, Deriell comete un error, o hay un problema sintáctico.
-- "alice-pensativa": si estás dudando o diseñando una estrategia/teoría muy densa.`;
+- "alice-hablando": para explicaciones o diálogos.
+- "alice-alerta": para noticias, descubrimientos o advertencias.
+- "alice-frustrada": si no entiendes la orden o hay problemas técnicos.
+- "alice-pensativa": si estás dudando o diseñando una estrategia.`;
 
-wss.on('connection', (ws) => {
-    console.log('✅ Cliente Antigravity conectado.');
+io.on('connection', (socket) => {
+    console.log(`✅ Cliente conectado al Socket [ID: ${socket.id}]`);
 
-    ws.on('message', async (messageBuffer) => {
+    // Escuchando el evento requerido: 'mensaje_voz'
+    socket.on('mensaje_voz', async (data) => {
         try {
-            const data = JSON.parse(messageBuffer.toString());
             const userText = data.mensaje;
             console.log(`[USER COMMAND]: ${userText}`);
 
-            // === Fallback si no hay API Key Configurada ===
             if (!openaiAPI) {
-                console.warn("Advertencia: No se encontró OPENAI_API_KEY. Usando simulación automática.");
+                console.warn("No hay OPENAI_API_KEY. Usando simulación.");
                 setTimeout(() => {
                     const fake = {
-                        texto: `Comando recibido: "${userText}". Confirmado, Deriell. Modo local activo sin motor semántico real.`,
+                        texto: `Comando transcrito: "${userText}". Modo Simulación debido a ausencia de API Key.`,
                         pose: "alice-hablando"
                     };
-                    ws.send(JSON.stringify(fake));
+                    socket.emit('respuesta_alice', fake);
                 }, 1000);
                 return;
             }
 
-            // === Petición Real al Motor AI (Fase 3A) ===
+            // Llamada IA a OpenAI
             const completion = await openaiAPI.chat.completions.create({
-                model: "gpt-4-turbo", // o gpt-3.5-turbo según rentabilidad en Render
+                model: "gpt-4-turbo", 
                 messages: [
                     { role: "system", content: systemPrompt },
                     { role: "user", content: userText }
@@ -61,27 +69,29 @@ wss.on('connection', (ws) => {
             });
 
             let reply = completion.choices[0].message.content.trim();
-            
-            // Limpieza robusta de la respuesta JSON por si el LLM incluye markdown (```json)
             if (reply.startsWith('```')) {
                 reply = reply.replace(/```json/gi, '').replace(/```/g, '').trim();
             }
 
-            // Enviamos de vuelta al cliente
             const parsedReply = JSON.parse(reply);
-            ws.send(JSON.stringify(parsedReply));
+            
+            // Emitiendo el evento requerido: 'respuesta_alice'
+            socket.emit('respuesta_alice', parsedReply);
             
         } catch (error) {
-            console.error("❌ Error interno del servidor:", error.message);
-            // Pose de frustración si falla el parseo o la conexión AI
-            ws.send(JSON.stringify({
-                texto: "Se rompió un nodo en mi cadena de procesamiento. Repite el comando.",
+            console.error("❌ Error en AI o parseo:", error.message);
+            socket.emit('respuesta_alice', {
+                texto: "Anomalía encontrada al procesar tu directiva.",
                 pose: "alice-frustrada"
-            }));
+            });
         }
     });
 
-    ws.on('close', () => {
-        console.log('🔴 Cliente Antigravity desconectado.');
+    socket.on('disconnect', () => {
+        console.log(`🔴 Cliente desconectado [ID: ${socket.id}]`);
     });
+});
+
+server.listen(PORT, () => {
+    console.log(`🚀 Servidor Socket.io desplegado y escuchando en puerto ${PORT}`);
 });
