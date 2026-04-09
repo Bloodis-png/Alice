@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Proyecto ALICE - Dashboard</title>
+    
+    <!-- Meta/SEO -->
+    <meta name="description" content="Interfaz principal del Proyecto ALICE Fase 1">
+    
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    
+    <!-- Phosphor Icons (Librería moderna de iconos) -->
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+    
+    <!-- Estilos locales -->
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <!-- Capa Global: Botones y superposiciones -->
+    <div class="global-layer">
+        <button id="boton-login" class="btn global-btn top-right" title="Iniciar Sesión">
+            <i class="ph ph-sign-in"></i>
+            <span>Entrar con Google/Twitch</span>
+        </button>
+        
+        <button id="boton-clip" class="btn global-btn top-left" title="Guardar Clip Épico">
+            <i class="ph-fill ph-video-camera"></i>
+            <span>Clip Épico</span>
+        </button>
+    </div>
+
+    <!-- Layout Principal: 3 Columnas -->
+    <div class="layout-grid">
+        
+        <!-- Columna 1: Panel Izquierdo (Chat y Comandos) -->
+        <aside class="panel panel-left glass-panel">
+            <div class="panel-header">
+                <i class="ph ph-terminal-window"></i>
+                <h2>Panel de Mando</h2>
+            </div>
+            
+            <div class="panel-content">
+                <!-- Zona de scroll para historial -->
+                <div id="historial-chat" class="chat-history">
+                    <div class="message msg-alice">
+                        <div class="avatar avatar-alice">A</div>
+                        <div class="msg-bubble">
+                            <p>Sistemas inicializados. Esperando despliegue de Live2D.</p>
+                        </div>
+                    </div>
+                    <div class="message msg-user">
+                        <div class="msg-bubble">
+                            <p>Entendido. Cargando módulos base.</p>
+                        </div>
+                        <div class="avatar avatar-user">U</div>
+                    </div>
+                </div>
+                
+                <!-- Input de usuario -->
+                <div class="input-wrapper">
+                    <input type="text" id="input-comando" placeholder="Escribe un comando o envía voz...">
+                    <button id="boton-microfono" class="icon-btn btn-mic">
+                        <i class="ph ph-microphone"></i>
+                    </button>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Columna 2: Central (Estudio ALICE) -->
+        <main class="studio-center">
+            <!-- Fondo de la habitación -->
+            <div class="room-background"></div>
+
+            <!-- Objetos Interactivos / Dinámicos (Capas Absolutas) -->
+            <!-- Nota: Puedes cambiar background-image en style.css al subir tus assets -->
+            <div class="room-object obj-window" title="Ventana Día/Noche">
+                <span>Ventana</span>
+            </div>
+            
+            <div class="room-object obj-desk" title="Escritorio">
+                <span>Escritorio</span>
+            </div>
+            
+            <div class="room-object obj-pc" title="PC y Monitores">
+                <span>PC Setup</span>
+            </div>
+            
+            <div class="room-object obj-xbox" title="Xbox Series X">
+                <span>Xbox</span>
+            </div>
+            
+            <div class="room-object obj-beanbag" title="Puf">
+                <span>Puf</span>
+            </div>
+            
+            <div class="room-object obj-plants" title="Plantas/Alfombra">
+                <span>Decoración</span>
+            </div>
+
+            <!-- Contenedor Base Live2D / Sprite (Fase 2) -->
+            <div id="contenedor-alice" class="alice-container">
+                <!-- Por defecto inicia en pose reposo -->
+                <img id="sprite-alice" class="alice-reposo" src="" alt="Alice Sprite">
+            </div>
+        </main>
+
+        <!-- Columna 3: Panel Derecho (Memoria e Inteligencia) -->
+        <aside class="panel panel-right glass-panel">
+            <!-- Sección: Radar de Noticias -->
+            <section class="sub-panel radar-section">
+                <div class="panel-header">
+                    <i class="ph ph-radar"></i>
+                    <h3>Radar de Noticias</h3>
+                </div>
+                <div class="panel-content scrollable">
+                    <div id="lista-noticias" class="news-list">
+                        <!-- Tarjetas de noticias demo -->
+                        <article class="news-card">
+                            <h4 class="news-title">Nuevo modelo de IA</h4>
+                            <p class="news-summary">Avances recientes mejoran la interacción en tiempo real.</p>
+                        </article>
+                        <article class="news-card">
+                            <h4 class="news-title">Actualización Servidores</h4>
+                            <p class="news-summary">Render implementa mejoras en la latencia global.</p>
+                        </article>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Sección: Bóveda de Memoria -->
+            <section class="sub-panel memory-section">
+                <div class="panel-header">
+                    <i class="ph ph-brain"></i>
+                    <h3>Bóveda de Memoria</h3>
+                </div>
+                <div class="panel-content">
+                    <div id="panel-memoria" class="memory-container">
+                        <!-- Etiquetas (Tags) de ejemplo -->
+                        <span class="memory-tag"><i class="ph ph-game-controller"></i> FPS Player</span>
+                        <span class="memory-tag"><i class="ph ph-coffee"></i> Toma Café</span>
+                        <span class="memory-tag"><i class="ph ph-moon"></i> Nocturno(a)</span>
+                        <span class="memory-tag"><i class="ph ph-code"></i> Python/JS</span>
+                    </div>
+                </div>
+            </section>
+        </aside>
+
+    </div>
+    
+    <!-- Lógica de Frontend (Fase 3A) -->
+    <script src="script.js"></script>
+</body>
+</html>
